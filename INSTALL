@@ -1,0 +1,29 @@
+INDI ServoBlaster Cap 0.1 - (beta)
+==================================
+
+You must have CMake >= 2.8 in order to build this package.
+
+indi_servoblaster_cap
+==================
+
+1) $ cd ~/Projects
+2) $ git clone https://github.com/magnue/indi_arduino_cap.git
+4) $ mkdir build
+5) $ cd build
+6) $ cmake -DCMAKE_INSTALL_PREFIX=/usr . ../../indi_arduino_cap
+7) $ sudo make install
+
+Dependencies
+============
+
++ libindi and it's dependencies
+    # To to build libindi from source 
+        # http://www.indilib.org/forum/general/210-howto-building-latest-libindi-ekos.html
+
++ python3 with pip and pyfirmata
+    # To install pyfirmata on ubuntu 20.04.x
+        # https://pypi.org/project/pyFirmata/
+
++ (optinal) INDI USBRelay2 Roof
+    # To build from source
+        # https://github.com/magnue/indi_usbrelay2_roof.git
