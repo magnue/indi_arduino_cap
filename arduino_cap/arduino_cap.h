@@ -32,7 +32,6 @@
 #include "indilightboxinterface.h"
 
 #include <cstring>
-#include <string>
 
 class ArduinoCap : public INDI::DefaultDevice, public INDI::DustCapInterface, public INDI::LightBoxInterface
 {
@@ -75,14 +74,13 @@ class ArduinoCap : public INDI::DefaultDevice, public INDI::DustCapInterface, pu
     bool isMoveStep;
     bool isClosing;
     double moveToABS;
-    std::string usbComDev;
     Parkdata parkData;
 
     void SetupParams();
     void SetOKParkStatus();
-    void Move();
-    void MoveToABS(double toMove);
-    void DoMove();
+    bool Move();
+    bool MoveToABS(double toMove);
+    bool DoMove();
     double getFullABS(bool closed);
     void setABS(double pos);
     int PopenInt(const char* cmd);
@@ -100,6 +98,9 @@ class ArduinoCap : public INDI::DefaultDevice, public INDI::DustCapInterface, pu
     // Options tab
     ISwitchVectorProperty LightTypeSP;
     ISwitch LightTypeS[2];
+
+    ITextVectorProperty DevicePathTP;
+    IText DevicePathT[1];
 
     // Config tab
     INumberVectorProperty ServoIDNP;

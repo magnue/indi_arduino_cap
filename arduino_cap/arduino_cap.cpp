@@ -22,8 +22,8 @@
   file called LICENSE.
 *******************************************************************************/
 #include "arduino_cap.h"
-
 #include <memory>
+#include <string>
 
 #define CALIB_TAB "Calibrate"
 
@@ -70,7 +70,6 @@ ArduinoCap::ArduinoCap() : LightBoxInterface(this, false)
 {
     setVersion(0,1);
     // Initialize all vars for predictable behavior.
-    usbComDev = "/dev/ttyUSB0";
     isConnecting = true;
     isMoving = false;
     isMoveStep = false;
@@ -108,6 +107,10 @@ bool ArduinoCap::initProperties()
     IUFillSwitch(&LightTypeS[1], "TYPE_NONE", "do not use lightsource", ISS_OFF);
     IUFillSwitchVector(&LightTypeSP, LightTypeS, 2, getDeviceName(), "TYPE_SELECT",
             "Light device", OPTIONS_TAB, IP_RW, ISR_1OFMANY, 0, IPS_OK);
+
+    IUFillText(&DevicePathT[0],"DEVICE_PATH","usb device path","/dev/ttyUSB0");
+    IUFillTextVector(&DevicePathTP,DevicePathT,1,getDeviceName(),"DEVICE_PATH","USB device path",
+            OPTIONS_TAB,IP_RW,60,IPS_IDLE);
 
     /************************************************************************************
     * Calibration Tab
@@ -181,6 +184,7 @@ bool ArduinoCap::updateProperties()
         
         // Options tab
         defineSwitch(&LightTypeSP);
+        defineText(&DevicePathTP);
 
         // Calib tab
         defineNumber(&ServoIDNP);
@@ -198,6 +202,7 @@ bool ArduinoCap::updateProperties()
 
         // Options tab
         deleteProperty(LightTypeSP.name);
+        deleteProperty(DevicePathTP.name);
 
         // Calib tab
         deleteProperty(ServoIDNP.name);
@@ -258,9 +263,7 @@ bool ArduinoCap::ISNewNumber(const char *dev, const char *name, double values[],
                 MoveSteppNP.s = IPS_OK;
                 IDSetNumber(&MoveSteppNP, NULL);
 
-                MoveToABS(values[0]);
-
-                return true;
+                return MoveToABS(values[0]);
             }
         }
         // Update all remainig switches.
@@ -302,6 +305,14 @@ bool ArduinoCap::ISNewText(const char *dev, const char *name, char *texts[], cha
     {
         if (processLightBoxText(dev, name, texts, names, n))
             return true;
+
+        if (strcmp(name,DevicePathTP.name)==0)
+        {
+            IUUpdateText(&DevicePathTP, texts, names, n);
+            DevicePathTP.s = IPS_OK;
+            IDSetText(&DevicePathTP, NULL);
+            return true;
+        }
     }
     return INDI::DefaultDevice::ISNewText(dev, name, texts, names, n);
 }
@@ -346,6 +357,7 @@ bool ArduinoCap::saveConfigItems(FILE *fp)
     IUSaveConfigNumber(fp, &ServoIDNP);
     IUSaveConfigNumber(fp, &LightSwitchNP);
     IUSaveConfigSwitch(fp, &LightTypeSP);
+    IUSaveConfigText(fp, &DevicePathTP);
     IUSaveConfigNumber(fp, &ServoTravelNP);
     IUSaveConfigNumber(fp, &ServoLimitNP);
     return true;
@@ -361,9 +373,9 @@ IPState ArduinoCap::ParkCap()
     ParkCapSP.s = IPS_BUSY;
     IDSetSwitch(&ParkCapSP, NULL);
 
-    if (!isConnecting)
-        Move();
-    return IPS_OK;
+    if (!isConnecting && Move())
+        return IPS_OK;
+    return IPS_BUSY;
 }
 
 IPState ArduinoCap::UnParkCap()
@@ -376,9 +388,9 @@ IPState ArduinoCap::UnParkCap()
     ParkCapSP.s = IPS_BUSY;
     IDSetSwitch(&ParkCapSP, NULL);
 
-    if (!isConnecting)
-        Move();
-    return IPS_OK;
+    if (!isConnecting && Move())
+        return IPS_OK;
+    return IPS_BUSY;
 }
 
 void ArduinoCap::SetOKParkStatus()
@@ -395,7 +407,7 @@ void ArduinoCap::SetOKParkStatus()
     parkData.SetParked(isClosing);
 }
 
-void ArduinoCap::Move()
+bool ArduinoCap::Move()
 {
     // Initialize limit, steps and start TimerHit to prak or unpark cap.
     double absAtStart = AbsolutePosN[0].value;
@@ -414,10 +426,10 @@ void ArduinoCap::Move()
 
     DEBUGF(INDI::Logger::DBG_SESSION, "%s from %6.2f, to %6.2f"
             , isClosing ? "Closing" : "Opening", absAtStart, moveToABS);
-    DoMove();
+    return DoMove();
 }
 
-void ArduinoCap::MoveToABS(double moveTo)
+bool ArduinoCap::MoveToABS(double moveTo)
 {
     moveToABS = moveTo;
     isMoving = true;
@@ -425,32 +437,43 @@ void ArduinoCap::MoveToABS(double moveTo)
 
     DEBUGF(INDI::Logger::DBG_SESSION, "Setting servo to %6.2f wihout interpolation"
             , moveToABS);
-    DoMove();
+    return DoMove();
 }
 
-void ArduinoCap::DoMove()
+bool ArduinoCap::DoMove()
 {
     // DoMove. Used by park / unpark, and move step open / close.
     if (isMoving)
     {
         double servoIs = AbsolutePosN[0].value;
+        std::string usbComDev = DevicePathT[0].text; 
+        double servoID = ServoIDN[0].value;
         if (!isMoveStep)
         {
             // Servo move cmd string
             std::string cmd = "/usr/bin/arduino_servo.py "
                 + usbComDev 
                 + " "
-                + std::to_string(static_cast<int>(ServoIDN[0].value))
+                + std::to_string(static_cast<int>(servoID))
                 + " " 
                 + std::to_string(static_cast<int>(moveToABS))
                 + " "
-                + std::to_string(static_cast<int>(servoIs));
+                + std::to_string(static_cast<int>(servoIs))
+                + ";echo $?";
             if (!INDI::DefaultDevice::isSimulation())
             {
-                PopenInt(cmd.c_str());
+                int res = PopenInt(cmd.c_str());
+                if (res != 0)
+                {
+                    DEBUGF(INDI::Logger::DBG_ERROR, "Moving servo failed. Attempted cmd was: %s", cmd.c_str());
+                    return false;
+                }
+                else 
+                {
+                    DEBUGF(INDI::Logger::DBG_DEBUG, "*****Moving servo to interpolated with CMD: %s", cmd.c_str());
+                    setABS(moveToABS);
+                }
             }
-            DEBUGF(INDI::Logger::DBG_DEBUG, "*****Moving servo interpolated with CMD: %s", cmd.c_str());
-            setABS(moveToABS);
             isMoving = false;
         }
         else
@@ -459,17 +482,25 @@ void ArduinoCap::DoMove()
             std::string cmd = "/usr/bin/arduino_servo.py "
                 + usbComDev 
                 + " "
-                + std::to_string(static_cast<int>(ServoIDN[0].value))
+                + std::to_string(static_cast<int>(servoID))
                 + " " 
                 + std::to_string(static_cast<int>(moveToABS))
                 + " "
-                + std::to_string(static_cast<int>(moveToABS));
+                + std::to_string(static_cast<int>(moveToABS))
+                + ";echo $?";
             if (!INDI::DefaultDevice::isSimulation())
             {
-                PopenInt(cmd.c_str());
+                int res = PopenInt(cmd.c_str());
+                if (res != 0)
+                {
+                     DEBUGF(INDI::Logger::DBG_ERROR, "Moving servo failed. Attempted cmd was: %s", cmd.c_str());
+                }
+                else 
+                {
+                    DEBUGF(INDI::Logger::DBG_DEBUG, "*****Moving servo to ABS with CMD: %s", cmd.c_str());
+                    setABS(moveToABS);
+                }
             }
-            DEBUGF(INDI::Logger::DBG_DEBUG, "*****Moving servo to ABS with CMD: %s", cmd.c_str());
-            setABS(moveToABS);
             isMoving = false;
         }
 
@@ -478,6 +509,7 @@ void ArduinoCap::DoMove()
         if (!isMoving)
             isMoveStep = false;
     }
+    return true;
 }
 
 bool ArduinoCap::EnableLightBox(bool enable)
@@ -586,6 +618,5 @@ int ArduinoCap::PopenInt(const char* cmd)
     pclose(fp);
 
     DEBUGF(INDI::Logger::DBG_DEBUG, "*****PopenString: %s", str.c_str());
-    // str == "" then popen did not return anything.
-    return str == "" ? 1 : 0;
+    return str.empty() || str.front() == '1' ? 1 : 0;
 }
