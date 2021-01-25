@@ -178,19 +178,19 @@ bool ArduinoCap::updateProperties()
     if (isConnected())
     {
         // Main tab
-        defineSwitch(&ParkCapSP);
-        defineNumber(&MoveSteppNP);
-        defineNumber(&AbsolutePosNP);
+        defineProperty(&ParkCapSP);
+        defineProperty(&MoveSteppNP);
+        defineProperty(&AbsolutePosNP);
         
         // Options tab
-        defineSwitch(&LightTypeSP);
-        defineText(&DevicePathTP);
+        defineProperty(&LightTypeSP);
+        defineProperty(&DevicePathTP);
 
         // Calib tab
-        defineNumber(&ServoIDNP);
-        defineNumber(&LightSwitchNP);
-        defineNumber(&ServoTravelNP);
-        defineNumber(&ServoLimitNP);
+        defineProperty(&ServoIDNP);
+        defineProperty(&LightSwitchNP);
+        defineProperty(&ServoTravelNP);
+        defineProperty(&ServoLimitNP);
     }
     else
     {
@@ -338,7 +338,7 @@ bool ArduinoCap::ISNewSwitch(const char *dev, const char *name, ISState *states,
                     , isUsbRelay2 ? "USBRelay2 Roof." : "No lightsource");
 
             if (isUsbRelay2 && !isConnecting)
-                defineSwitch(&LightSP);
+                defineProperty(&LightSP);
             else
                 deleteProperty(LightSP.name);
             return true;
@@ -564,7 +564,7 @@ void ArduinoCap::TimerHit()
     {
         setABS(getFullABS(isClosing));
         if (LightTypeS[0].s == ISS_ON)
-            defineSwitch(&LightSP);
+            defineProperty(&LightSP);
         
         isConnecting = false;
         return;
